@@ -8,11 +8,11 @@ on:
         required: false
         type: boolean
         default: true
-      BUILD_IMAGES:
+      ENABLE_ASPECTS:
         description: 'Rebuild all images before launch'
         required: false
         type: boolean
-        default: true
+        default: false
 
 jobs:
   deploy:
@@ -26,7 +26,7 @@ jobs:
       TUTOR: ~/venv/bin/tutor
       # Always clear data and build images, unless it's a manually triggered workflow and it was unchecked.
       CLEAR_DATA: ${{ inputs.CLEAR_DATA == false && 'false' || 'true' }}
-      BUILD_IMAGES: ${{ inputs.BUILD_IMAGES == false && 'false' || 'true' }}
+      ENABLE_ASPECTS: ${{ inputs.ENABLE_ASPECTS == true && 'true' || 'false' }}
     steps:
       - name: Configure SSH
         run: |
@@ -53,24 +53,13 @@ jobs:
           "
       # Server system dependencies, to be run separately
       # apt update && apt install -y python3-pip
-      - name: Install dependencies, tutor and plugins (from source)
-      # pending:
-        # $PIP install --upgrade git+https://github.com/openedx/openedx-tutor-plugins.git#subdirectory=plugins/tutor-contrib-scout-apm
+      - name: Install dependencies, tutor and plugins
         run: |
           $SSH "#! /bin/bash -e
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor.git@$VERSION#egg=tutor
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-mfe.git@$VERSION#egg=tutor-mfe
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-discovery.git@$VERSION#egg=tutor-discovery
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-credentials.git@$VERSION#egg=tutor-credentials
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-minio.git@$VERSION#egg=tutor-minio
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-forum.git@$VERSION#egg=tutor-forum
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-notes.git@$VERSION#egg=tutor-notes
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-xqueue.git@$VERSION#egg=tutor-xqueue
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-android.git@$VERSION#egg=tutor-android
-            $PIP install --upgrade --editable git+https://github.com/overhangio/tutor-jupyter.git@$VERSION#egg=tutor-jupyter
-            $PIP install --upgrade --editable git+https://github.com/eduNEXT/tutor-contrib-codejail.git@$VERSION#egg=tutor-contrib-codejail
-            $PIP install --upgrade --editable git+https://github.com/openedx/tutor-contrib-aspects.git@ulmo-dev#egg=tutor-contrib-aspects
-            $PIP install --upgrade --editable git+https://github.com/openedx/tutor-contrib-notifications.git@$VERSION#egg=tutor-contrib-notifications
+            $PIP install --upgrade "tutor[full]"
+            $PIP install --upgrade tutor-contrib-codejail
+            $PIP install --upgrade tutor-contrib-aspects
+            $PIP install --upgrade git+https://github.com/openedx/tutor-contrib-notifications
           "
       # Backup
       - name: Backup data
@@ -117,8 +106,10 @@ jobs:
           "
       # Configure
       - name: Enable plugins
-      # pending plugins: scout-apm
         run: $SSH "$TUTOR plugins enable mfe aspects credentials discovery minio forum notes xqueue codejail android jupyter notifications"
+      - name: Enable aspects
+        if: env.ENABLE_ASPECTS == 'true'
+        run: $SSH "$TUTOR plugins enable aspects"
       - name: Configure tutor settings
         run: |
           $SSH "#! /bin/bash -e
@@ -141,17 +132,13 @@ jobs:
         run: |
           $SSH "$TUTOR config save --set ASPECTS_ENABLE_PII=true --set ASPECTS_ENABLE_STUDIO_IN_CONTEXT_METRICS=true"
 
-      # - name: Configure Scout APM
-      #   run: |
-      #     $SSH "$TUTOR config save --set SCOUT_NAME='Edly Ulmo Sandbox' --set SCOUT_KEY=$SCOUT_APM_KEY"
-      #   env:
-      #     SCOUT_APM_KEY: ${{ secrets.SCOUT_APM_KEY }}
-
-      - name: Build Docker images
-        if: env.BUILD_IMAGES == 'true'
+      - name: Build Docker images (required for aspects plugin)
+        if: env.ENABLE_ASPECTS == 'true'
         run: |
           $SSH "#! /bin/bash -e
-            $TUTOR images build all
+            $TUTOR images build openedx --no-cache && \
+            $TUTOR images build mfe --no-cache && \
+            $TUTOR images build aspects aspects-superset
           "
 
       - name: Initialize codejail
@@ -160,11 +147,5 @@ jobs:
       - name: Launch
         run: $SSH "$TUTOR local launch --skip-build --non-interactive"
 
-      - name: "Provision: Create users"
-        run: |
-          $SSH "#! /bin/bash -e
-            $TUTOR local do createuser --staff --superuser --password=admin admin admin@edly.io
-            $TUTOR local do createuser --password=student student student@edly.io
-          "
       - name: "Provision: Import demo course"
         run: $SSH "$TUTOR local do importdemocourse"

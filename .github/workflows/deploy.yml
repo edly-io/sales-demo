@@ -56,9 +56,9 @@ jobs:
       - name: Install dependencies, tutor and plugins
         run: |
           $SSH "#! /bin/bash -e
-            $PIP install --upgrade "tutor[full]==20.0.5"
-            $PIP install --upgrade tutor-contrib-codejail==20.1.0
-            $PIP install --upgrade tutor-contrib-aspects==2.5.1
+            $PIP install --upgrade "tutor[full]==21.0.1"
+            $PIP install --upgrade tutor-contrib-codejail==21.0.0
+            $PIP install --upgrade tutor-contrib-aspects==3.0.3
             $PIP install --upgrade git+https://github.com/openedx/tutor-contrib-notifications
             $PIP install --upgrade git+https://github.com/edly-io/tutor-indigo.git@feat/theme-logos-branding-primary-secondary-dark
           "

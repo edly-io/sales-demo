@@ -60,7 +60,7 @@ jobs:
             $PIP install --upgrade tutor-contrib-codejail==21.0.0
             $PIP install --upgrade tutor-contrib-aspects==3.0.3
             $PIP install --upgrade git+https://github.com/openedx/tutor-contrib-notifications
-            $PIP install --upgrade git+https://github.com/edly-io/tutor-indigo.git@feat/theme-logos-branding-primary-secondary-dark
+            $PIP install --upgrade git+https://github.com/edly-io/tutor-indigo.git@ulmo-edly-demo
           "
       # Backup
       - name: Backup data

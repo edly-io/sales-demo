@@ -59,8 +59,9 @@ jobs:
             $PIP install --upgrade "tutor[full]==22.0.2"
             $PIP install --upgrade tutor-contrib-codejail==22.0.1
             $PIP install --upgrade tutor-contrib-aspects==4.0.0
-            # tutor-contrib-notifications is not installed: its latest release (21.0.1) pins tutor<22
-            # and has no Verawood-compatible release yet (https://github.com/openedx/tutor-contrib-platform-notifications).
+            # tutor-contrib-notifications is no longer needed: in Verawood the notifications feature is native
+            # (enabled by default, tray built into the header, preferences in the account MFE). The plugin also
+            # has no Verawood release (21.0.1 pins tutor<22).
             # --force-reinstall is required: tutor[full] already installs tutor-indigo from PyPI with the
             # same version number (22.0.0), so a plain --upgrade would keep the PyPI package and drop the Edly theme.
             $PIP install --upgrade --force-reinstall --no-deps git+https://github.com/edly-io/tutor-indigo.git@verawood

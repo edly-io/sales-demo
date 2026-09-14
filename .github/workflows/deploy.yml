@@ -125,6 +125,18 @@ jobs:
               --set PLATFORM_NAME='Open edX Verawood Demo'
           "
 
+      - name: Configure MinIO images
+        # MinIO removed its images from Docker Hub (minio/minio and minio/mc return 404), so the
+        # releases pinned by tutor-minio are pulled from quay.io instead. The server hotfix tag
+        # (RELEASE.2022-03-26T06-49-28Z.hotfix.26ec6a857) is not on quay.io; the same release without
+        # the hotfix suffix is.
+        run: |
+          $SSH "#! /bin/bash -e
+            $TUTOR config save \
+              --set MINIO_DOCKER_IMAGE=quay.io/minio/minio:RELEASE.2022-03-26T06-49-28Z \
+              --set MINIO_MC_DOCKER_IMAGE=quay.io/minio/mc:RELEASE.2022-03-31T04-55-30Z
+          "
+
       - name: Configure xqueue grader password
         run: |
           $SSH "$TUTOR config save --set XQUEUE_REPOSITORY_VERSION=master --set XQUEUE_AUTH_PASSWORD=xqueuepassword"

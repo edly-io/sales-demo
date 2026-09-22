@@ -8,11 +8,11 @@ on:
         required: false
         type: boolean
         default: true
-      ENABLE_ASPECTS:
-        description: 'Rebuild all images before launch'
+      REBUILD_IMAGES:
+        description: 'Rebuild the openedx and mfe images before launch (required after any plugin or theme change)'
         required: false
         type: boolean
-        default: false
+        default: true
 
 jobs:
   deploy:
@@ -24,9 +24,9 @@ jobs:
       VENV: ~/venv
       PIP: ~/venv/bin/pip
       TUTOR: ~/venv/bin/tutor
-      # Always clear data and build images, unless it's a manually triggered workflow and it was unchecked.
+      # Always clear data and rebuild images, unless it's a manually triggered workflow and it was unchecked.
       CLEAR_DATA: ${{ inputs.CLEAR_DATA == false && 'false' || 'true' }}
-      ENABLE_ASPECTS: ${{ inputs.ENABLE_ASPECTS == true && 'true' || 'false' }}
+      REBUILD_IMAGES: ${{ inputs.REBUILD_IMAGES == false && 'false' || 'true' }}
     steps:
       - name: Configure SSH
         run: |
@@ -58,6 +58,12 @@ jobs:
           $SSH "#! /bin/bash -e
             $PIP install --upgrade "tutor[full]==22.0.2"
             $PIP install --upgrade tutor-contrib-codejail==22.0.1
+            # Keep Aspects on the v4 line for Verawood. Do NOT bump to v5.0.0: it pins its MFE to
+            # "@openedx/frontend-app-aspects": "^2.0.0-alpha", whose peer dependency is
+            # @openedx/frontend-base ^2.0.0-alpha.11, while Verawood's tutor-mfe ships frontend-base 1.0.1.
+            # That combination fails `tutor images build mfe` with an npm ERESOLVE error. Aspects v4.0.0
+            # requests the package as "*", which resolves to the compatible frontend-app-aspects 1.0.2.
+            # (Upstream CI does not catch this because it never builds the mfe image.)
             $PIP install --upgrade tutor-contrib-aspects==4.0.0
             # tutor-contrib-notifications is no longer needed: in Verawood the notifications feature is native
             # (enabled by default, tray built into the header, preferences in the account MFE). The plugin also
@@ -112,9 +118,6 @@ jobs:
       # Configure
       - name: Enable plugins
         run: $SSH "$TUTOR plugins enable mfe aspects credentials discovery minio forum notes xqueue codejail jupyter"
-      - name: Enable aspects
-        if: env.ENABLE_ASPECTS == 'true'
-        run: $SSH "$TUTOR plugins enable aspects"
       - name: Configure tutor settings
         run: |
           $SSH "#! /bin/bash -e
@@ -149,13 +152,19 @@ jobs:
         run: |
           $SSH "$TUTOR config save --set ASPECTS_ENABLE_PII=true --set ASPECTS_ENABLE_STUDIO_IN_CONTEXT_METRICS=true"
 
-      - name: Build Docker images (required for aspects plugin)
-        if: env.ENABLE_ASPECTS == 'true'
+      # The openedx image must carry the Indigo theme plus the Aspects plugins
+      # (platform-plugin-aspects and edx-event-routing-backends), and the mfe image must carry
+      # the Edly brand plus the Aspects in-context metrics slot in the authoring MFE. Without
+      # this rebuild, `launch --skip-build` reuses images that have none of that, so ClickHouse
+      # and Superset come up with no events ever reaching them.
+      # The aspects and aspects-superset images are published (edunext/*) and are pulled at launch,
+      # so they are not built here.
+      - name: Build Docker images (Indigo theme + Aspects plugins)
+        if: env.REBUILD_IMAGES == 'true'
         run: |
           $SSH "#! /bin/bash -e
             $TUTOR images build openedx --no-cache && \
-            $TUTOR images build mfe --no-cache && \
-            $TUTOR images build aspects aspects-superset
+            $TUTOR images build mfe --no-cache
           "
 
       - name: Initialize codejail
@@ -166,3 +175,13 @@ jobs:
 
       - name: "Provision: Import demo course"
         run: $SSH "$TUTOR local do importdemocourse"
+
+      # Aspects only receives xAPI events emitted from this point on, so the courses and enrolments
+      # that already exist (the demo course imported above) would be invisible in every dashboard.
+      # These backfill the CMS course structure and the LMS user/enrolment data into ClickHouse.
+      - name: "Provision: Backfill existing course and user data into Aspects"
+        run: |
+          $SSH "#! /bin/bash -e
+            $TUTOR local do dump-data-to-clickhouse --service cms && \
+            $TUTOR local do dump-data-to-clickhouse --service lms
+          "

@@ -178,10 +178,16 @@ jobs:
 
       # Aspects only receives xAPI events emitted from this point on, so the courses and enrolments
       # that already exist (the demo course imported above) would be invisible in every dashboard.
-      # These backfill the CMS course structure and the LMS user/enrolment data into ClickHouse.
+      # These backfill the CMS course structure and the LMS enrolment/user data into ClickHouse.
+      # Each object type must be dumped explicitly: the command errors out with
+      # "You must specify an object type to dump!" if --object is omitted.
+      # auth_user is deliberately not dumped: Aspects 4.0.0 does not create the event_sink.auth_user
+      # table, so that sink fails with a 404 from ClickHouse and would fail the step.
       - name: "Provision: Backfill existing course and user data into Aspects"
         run: |
           $SSH "#! /bin/bash -e
-            $TUTOR local do dump-data-to-clickhouse --service cms && \
-            $TUTOR local do dump-data-to-clickhouse --service lms
+            $TUTOR local do dump-data-to-clickhouse --service cms --options '--object course_overviews --force'
+            for obj in course_enrollment user_profile external_id; do
+              $TUTOR local do dump-data-to-clickhouse --service lms --options \"--object \$obj --force\"
+            done
           "
